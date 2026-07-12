@@ -1,0 +1,10 @@
+{
+  "_note": "2026-07-10 happy/SDK 会话内实测返回（数值为当时快照）。关键字段：five_hour/seven_day.{utilization,resets_at}，limits[] 含 severity/is_active/scoped 额度",
+  "five_hour": {"utilization": 50.0, "resets_at": "2026-07-10T13:49:59.904281+00:00"},
+  "seven_day": {"utilization": 11.0, "resets_at": "2026-07-16T03:00:00.904311+00:00"},
+  "limits": [
+    {"kind": "session", "group": "session", "percent": 50, "severity": "normal", "resets_at": "2026-07-10T13:49:59.904281+00:00", "scope": null, "is_active": true},
+    {"kind": "weekly_all", "group": "weekly", "percent": 11, "severity": "normal", "resets_at": "2026-07-16T03:00:00.904311+00:00", "scope": null, "is_active": false},
+    {"kind": "weekly_scoped", "group": "weekly", "percent": 21, "severity": "normal", "resets_at": "2026-07-16T03:00:00.904576+00:00", "scope": {"model": {"display_name": "Fable"}}, "is_active": false}
+  ]
+}

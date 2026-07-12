@@ -1,0 +1,6 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/tmp/statusline-exp/dump.sh"
+  }
+}

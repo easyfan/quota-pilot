@@ -1,0 +1,12 @@
+{
+  "name": "quota-pilot",
+  "version": "0.1.0",
+  "description": "Quota-aware task scheduling — assess, checkpoint, and auto-resume before subscription rate limits hit, instead of crashing into them",
+  "author": {
+    "name": "easyfan",
+    "email": "zhengfan@apache.org"
+  },
+  "repository": "https://github.com/easyfan/quota-pilot",
+  "homepage": "https://github.com/easyfan/quota-pilot",
+  "license": "MIT"
+}

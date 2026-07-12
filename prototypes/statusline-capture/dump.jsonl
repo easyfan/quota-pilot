@@ -1,0 +1,1 @@
+{"_note": "V3 capture, 2026-07-10, CC 2.1.204. Session-identifying fields redacted; rate_limits preserved verbatim as the documented field shape.", "rate_limits": {"five_hour": {"used_percentage": 24, "resets_at": 1783691400}, "seven_day": {"used_percentage": 8, "resets_at": 1784170800}}}

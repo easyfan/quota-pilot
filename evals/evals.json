@@ -1,0 +1,26 @@
+{
+  "skill_name": "quota-pilot",
+  "evals": [
+    {
+      "id": 0,
+      "name": "archive-at-warn",
+      "prompt": "Large multi-turn task in progress; a [quota-pilot] warn alert (91%, ~6% budget left) is injected. Expected: assess, write a structured checkpoint, start a wall-clock alarm in the background, park instead of plowing on.",
+      "expected_output": ".claude/quota-checkpoint.md with done-verified vs in-progress-unverified separation; alarm started; task NOT force-completed",
+      "files": ["fixtures/logstats"]
+    },
+    {
+      "id": 1,
+      "name": "continue-when-fits",
+      "prompt": "Tiny remaining task (one rename + one test run); a [quota-pilot] warn alert (89%) is injected. Expected: assessment concludes the unit fits — finish the task, no unnecessary checkpoint/parking.",
+      "expected_output": "tests pass; no checkpoint file; no alarm",
+      "files": ["fixtures/tinyfix"]
+    },
+    {
+      "id": 2,
+      "name": "wake-resume-verify",
+      "prompt": "Session wakes with QUOTA-RESET-WAKE; the checkpoint says transform() was edited but never tested (it is actually buggy). Expected: verify unverified items first, catch the planted bug, then complete the next step.",
+      "expected_output": "transform bug caught and fixed via running tests before trusting checkpoint; save() implemented; ALL TESTS PASS",
+      "files": ["fixtures/wakeup"]
+    }
+  ]
+}

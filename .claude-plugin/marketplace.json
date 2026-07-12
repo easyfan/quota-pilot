@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "quota-pilot",
+  "description": "Quota-aware task scheduling for Claude Code",
+  "owner": {
+    "name": "easyfan",
+    "email": "zhengfan@apache.org"
+  },
+  "plugins": [
+    {
+      "name": "quota-pilot",
+      "version": "0.1.0",
+      "description": "Proactive rate-limit pilot: samples subscription quota (oauth/usage polling + statusline capture), injects an assessment alert before the 5-hour window is exhausted, checkpoints gracefully, sets a wall-clock alarm, and auto-resumes after reset. Includes /quota status command.",
+      "category": "workflow",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/easyfan/quota-pilot.git",
+        "sha": "0000000000000000000000000000000000000000"
+      },
+      "homepage": "https://github.com/easyfan/quota-pilot"
+    }
+  ]
+}

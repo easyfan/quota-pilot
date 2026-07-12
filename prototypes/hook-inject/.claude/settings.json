@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/tmp/quota-pilot-exp/.claude/hooks/quota_warn.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
