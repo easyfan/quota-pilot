@@ -189,13 +189,13 @@ echo "QUOTA-RESET-WAKE"
 - README 各语言版 + install.sh 与功能同步（packer 同步规则）
 - 发布节奏：MVP = 采样层 + hook + skill + /quota（够用）；v2 见下节
 
-## 10. v2 集成路线（2026-07-12 规划，与 loop / 长任务 / 长工作流的集成）
+## 10. v2 集成路线（2026-07-12 规划；①-④ 已于 v0.2.0 实现，⑤⑥ 待做）
 
 按优先级排序：
 
-1. **subagent 行为分支**（修复已知缺陷）：hook 对 subagent 同样生效，但 subagent 按协议挂闹钟会产生孤儿进程（行为评测中实证）。SKILL.md 增加 "if you are a subagent" 分支：不挂闹钟、快速收尾、返回摘要，把存档决策交还主会话。
-2. **`quota_report.sh --json`**（集成基石）：机器可读输出（utilization / resets_at_epoch / 建议 defer 秒数），使任何 loop prompt、workflow skill、agent 能一行调用做额度决策。hook 注入降级为兜底防线，主动查询成为常规集成方式。
-3. **/loop 额度感知调度**：loop 迭代开头读 state.json，额度紧张时把下次唤醒对齐 resets_at 之后（不存档不挂闹钟，间歇天然绕开枯竭期）。注意分工：短间歇用 loop 自身 wakeup（≤3600s 上限），长枯竭期切换 quota_alarm.sh（无上限）。示例写进 README。
-4. **长工作流阶段边界额度门**：多阶段 pipeline 在 Phase 边界查额度，不够则在边界存档（此时"进行中/未验证"天然为空，唤醒后直接进下一 Phase）。落地复用 patterns 的 patch-anchor 机制，`/patterns --patch` 批量补进已实例化工作流。
+1. ✅ **subagent 行为分支**（修复已知缺陷）：hook 对 subagent 同样生效，但 subagent 按协议挂闹钟会产生孤儿进程（行为评测中实证）。SKILL.md 增加 "if you are a subagent" 分支：不挂闹钟、快速收尾、返回摘要，把存档决策交还主会话。
+2. ✅ **`quota_report.sh --json`**（集成基石）：机器可读输出（utilization / resets_at_epoch / 建议 defer 秒数），使任何 loop prompt、workflow skill、agent 能一行调用做额度决策。hook 注入降级为兜底防线，主动查询成为常规集成方式。
+3. ✅ **/loop 额度感知调度**（README §Integrations 落地）：loop 迭代开头读 state.json，额度紧张时把下次唤醒对齐 resets_at 之后（不存档不挂闹钟，间歇天然绕开枯竭期）。注意分工：短间歇用 loop 自身 wakeup（≤3600s 上限），长枯竭期切换 quota_alarm.sh（无上限）。示例写进 README。
+4. ✅ **长工作流阶段边界额度门**（patterns/quota-phase-gate.md 分发；本机 committee-review 已示范接入 anchor）：多阶段 pipeline 在 Phase 边界查额度，不够则在边界存档（此时"进行中/未验证"天然为空，唤醒后直接进下一 Phase）。落地复用 patterns 的 patch-anchor 机制，`/patterns --patch` 批量补进已实例化工作流。
 5. **spawn 前预检**：主会话启动昂贵操作（committee 一轮 5-15%）前主动查 state.json，事前预检替代事后告警。
 6. 既有 v2 项：盲重试 watcher、7d 策略细化、burn rate 预测精化、O5 的 PreToolUse 配对拦截。

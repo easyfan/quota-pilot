@@ -69,6 +69,10 @@ Rien à faire — le hook surveille le quota à chaque appel d'outil (au plus un
 | `wake_jitter_minutes` | 5 | jitter aléatoire de réveil (garde anti-ruée multi-sessions) |
 | `seven_day_warn` | 90 | seuil de notification fenêtre 7 jours (notification seule) |
 
+## Intégrations
+
+L'alerte du hook est la ligne de défense *passive* ; les boucles et workflows multi-phases doivent interroger activement : `quota_report.sh --json` fournit `suggested_defer_seconds` (0 sous le seuil d'alerte, sinon secondes jusqu'au reset de la fenêtre). Les boucles reportent leur prochaine itération après le reset ; les workflows multi-phases vérifient aux frontières de phase (le point de stationnement le plus propre) — pattern prêt à l'emploi dans [`patterns/quota-phase-gate.md`](patterns/quota-phase-gate.md). Les sous-agents n'archivent pas eux-mêmes (réveils orphelins) mais rendent compte à la session principale. Détails : [README.md](README.md) §Integrations.
+
 ## Limites
 
 - **Comptes abonnement (Pro/Max) uniquement.** Les comptes à clé API n'ont pas de fenêtres de quota ; le plugin le détecte et reste dormant — zéro surcoût, zéro bruit.
@@ -79,7 +83,23 @@ Rien à faire — le hook surveille le quota à chaque appel d'outil (au plus un
 ## Développement
 
 ```bash
-tests/run_tests.sh    # 25 tests unitaires : échantillonnage, gating, statusline, réveil, aller-retour d'installation
+tests/run_tests.sh    # 28 tests unitaires : échantillonnage, gating, statusline, réveil, --json, aller-retour d'installation
 ```
+
+## Journal des modifications
+
+### v0.2.0 (2026-07-12)
+
+| Élément | Changement |
+|---------|------------|
+| `quota_report.sh --json` | sortie machine avec `suggested_defer_seconds` |
+| Branche sous-agent | les sous-agents rendent compte au lieu de créer des réveils orphelins |
+| `patterns/quota-phase-gate.md` | pattern de porte aux frontières de phase avec patch-anchor |
+
+Notes de version complètes en anglais : [README.md](README.md).
+
+### v0.1.0 (2026-07-11)
+
+Version initiale.
 
 Licence MIT.

@@ -42,6 +42,16 @@ Skip the assessment. Run the archive protocol immediately, then end your
 turn. At this level the reserve is nearly gone — every extra tool call risks
 dying mid-write.
 
+## If you are a subagent
+
+The quota hook fires in subagent sessions too, but the archive protocol is
+**not for you**: an alarm started inside a subagent dies with the subagent's
+process and becomes an orphan — it will never wake anyone. Do NOT write a
+checkpoint, do NOT start an alarm. Instead: finish or wind down the current
+smallest unit, then return to your caller a summary that separates
+*done-and-verified* from *in-progress-unverified*. The main session receives
+the same alerts and owns the archive decision.
+
 ## Archive protocol
 
 Two independent decisions, deliberately decoupled: the checkpoint is an
@@ -125,4 +135,6 @@ The background task's completion wakes the session. Read its output:
   that is one more reason to checkpoint now: writing the archive from a
   full context beats a lossy automatic compaction.
 - To check quota anytime, run the `/quota` command (or
-  `~/.claude/quota-pilot/bin/quota_report.sh`).
+  `~/.claude/quota-pilot/bin/quota_report.sh`; add `--json` for
+  machine-readable output with `suggested_defer_seconds` — useful before
+  spawning expensive multi-subagent work or inside loop iterations).

@@ -69,6 +69,10 @@ Nichts zu tun — der Hook überwacht das Kontingent bei jedem Tool-Aufruf (gedr
 | `wake_jitter_minutes` | 5 | zufälliger Weck-Jitter (Schutz vor Multi-Session-Ansturm) |
 | `seven_day_warn` | 90 | Benachrichtigungsschwelle 7-Tage-Fenster (nur Hinweis) |
 
+## Integrationen
+
+Der Hook-Alarm ist die *passive* Verteidigungslinie; Loops und mehrstufige Workflows sollten aktiv abfragen: `quota_report.sh --json` liefert `suggested_defer_seconds` (0 unterhalb der Warnschwelle, sonst Sekunden bis zum Fenster-Reset). Loops verschieben damit ihre nächste Iteration hinter den Reset; mehrstufige Workflows prüfen an Phasengrenzen (sauberster Parkpunkt) — fertiges Pattern in [`patterns/quota-phase-gate.md`](patterns/quota-phase-gate.md). Subagenten archivieren nicht selbst (verwaiste Wecker), sondern melden an die Hauptsession zurück. Details: [README.md](README.md) §Integrations.
+
 ## Grenzen
 
 - **Nur Abo-Konten (Pro/Max).** API-Key-Konten haben keine Kontingentfenster; das Plugin erkennt das und bleibt inaktiv — null Overhead, null Rauschen.
@@ -79,7 +83,23 @@ Nichts zu tun — der Hook überwacht das Kontingent bei jedem Tool-Aufruf (gedr
 ## Entwicklung
 
 ```bash
-tests/run_tests.sh    # 25 Unit-Tests: Sampling, Gating, Statusline, Wecker, Install-Roundtrip
+tests/run_tests.sh    # 28 Unit-Tests: Sampling, Gating, Statusline, Wecker, --json, Install-Roundtrip
 ```
+
+## Changelog
+
+### v0.2.0 (2026-07-12)
+
+| Punkt | Änderung |
+|-------|----------|
+| `quota_report.sh --json` | maschinenlesbare Ausgabe mit `suggested_defer_seconds` |
+| Subagent-Zweig | Subagenten melden zurück statt verwaiste Wecker zu starten |
+| `patterns/quota-phase-gate.md` | Phasengrenzen-Gate-Pattern mit patch-anchor |
+
+Vollständige englische Release Notes: [README.md](README.md).
+
+### v0.1.0 (2026-07-11)
+
+Erstveröffentlichung.
 
 MIT-Lizenz.

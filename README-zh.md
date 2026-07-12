@@ -69,6 +69,20 @@ cd quota-pilot
 | `wake_jitter_minutes` | 5 | 唤醒随机抖动（多会话防踩踏） |
 | `seven_day_warn` | 90 | 7d 窗口通知阈值（仅通知） |
 
+## 集成
+
+hook 告警是*被动*防线；loop 和多阶段工作流应主动查询：
+
+```bash
+~/.claude/quota-pilot/bin/quota_report.sh --json
+```
+
+`suggested_defer_seconds` 低于告警阈值时为 0，否则为距 5h 窗口重置的秒数（+120s 缓冲）；输出含 `error` 时视为"跳过额度门，不阻塞"。
+
+- **循环任务**（/loop 等）：每轮迭代开头读该值，>0 则跳过本轮实际工作、把下次唤醒排到重置之后——循环节奏自动绕开枯竭期，无需存档。自调度唤醒通常有上限（如 3600s），更长等待请链式空转或交给 `quota_alarm.sh`（无上限）。
+- **多阶段工作流**：在阶段边界查额度门——此时存档最干净（"进行中/未验证"天然为空，唤醒后直接进下一阶段）。现成 pattern 见 [`patterns/quota-phase-gate.md`](patterns/quota-phase-gate.md)，拷入 `~/.claude/patterns/` 后可借 patch-anchor 用 `/patterns --patch` 批量补进已实例化命令。
+- **subagent**：hook 在 subagent 会话同样触发，但 subagent 内启动的闹钟会随进程退出变孤儿——skill 已指示 subagent 快速收尾返回摘要，存档决策归主会话。
+
 ## 边界
 
 - **仅订阅账户（Pro/Max）。** API key 账户没有额度窗口；插件自动检测并休眠——零开销零噪音。
@@ -79,7 +93,23 @@ cd quota-pilot
 ## 开发
 
 ```bash
-tests/run_tests.sh    # 25 个单元测试：采样、决策、statusline、闹钟、安装往返
+tests/run_tests.sh    # 28 个单元测试：采样、决策、statusline、闹钟、--json、安装往返
 ```
+
+## 更新日志
+
+### v0.2.0 (2026-07-12)
+
+| 项目 | 变更 |
+|------|------|
+| `quota_report.sh --json` | 机器可读输出，含 `suggested_defer_seconds` |
+| subagent 分支 | subagent 收尾返回而非启动孤儿闹钟 |
+| `patterns/quota-phase-gate.md` | 阶段边界额度门 pattern（含 patch-anchor） |
+
+完整英文说明见 [README.md](README.md)。
+
+### v0.1.0 (2026-07-11)
+
+首次发布。
 
 MIT 许可证。

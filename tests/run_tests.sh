@@ -124,6 +124,23 @@ seed_state "$QG" 91 "$NOW" $((NOW+3600))
 OUT=$(QUOTA_PILOT_DIR="$QG" "$ROOT/scripts/quota_report.sh")
 echo "$OUT" | grep -q "5-hour window: 91%"; check "report renders current windows" $?
 
+OUT=$(QUOTA_PILOT_DIR="$TMP/empty-report" "$ROOT/scripts/quota_report.sh" --json)
+echo "$OUT" | python3 -c "import json,sys;d=json.load(sys.stdin);assert d['error']=='no-data' and len(d['reasons'])==3" 2>/dev/null
+check "--json no-data: machine-readable error" $?
+OUT=$(QUOTA_PILOT_DIR="$QG" "$ROOT/scripts/quota_report.sh" --json)
+echo "$OUT" | python3 -c "
+import json,sys;d=json.load(sys.stdin)
+assert d['five_hour']['utilization']==91.0
+assert d['suggested_defer_seconds'] > 3000, d['suggested_defer_seconds']" 2>/dev/null
+check "--json above threshold: defer suggests waiting past reset" $?
+QJ="$TMP/json-low"; mkdir -p "$QJ"
+seed_state "$QJ" 40 "$NOW" $((NOW+3600))
+OUT=$(QUOTA_PILOT_DIR="$QJ" "$ROOT/scripts/quota_report.sh" --json)
+echo "$OUT" | python3 -c "
+import json,sys;d=json.load(sys.stdin)
+assert d['suggested_defer_seconds']==0 and d['warn_threshold']==88.0" 2>/dev/null
+check "--json below threshold: defer is 0" $?
+
 echo "== install.sh roundtrip =="
 CD="$TMP/claude"; mkdir -p "$CD"
 echo '{"statusLine":{"type":"command","command":"my-old-statusline.sh"},"model":"opus"}' > "$CD/settings.json"

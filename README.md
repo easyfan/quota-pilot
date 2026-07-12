@@ -69,6 +69,41 @@ Nothing to do — the hook watches quota on every tool call (one throttled HTTPS
 | `wake_jitter_minutes` | 5 | random wake jitter (multi-session stampede guard) |
 | `seven_day_warn` | 90 | 7-day window notification threshold (notify only) |
 
+## Integrations
+
+The hook alert is the *passive* line of defense. For loops and multi-phase
+workflows, query quota proactively instead:
+
+```bash
+~/.claude/quota-pilot/bin/quota_report.sh --json
+# {"five_hour":{"utilization":68.0,"resets_at_epoch":...},"seven_day":{...},
+#  "burn_rate_per_hour":4.2,"suggested_defer_seconds":0,...}
+```
+
+`suggested_defer_seconds` is 0 while below the warn threshold, otherwise the
+seconds until the 5h window resets (+120s buffer). On error it prints
+`{"error":"no-data",...}` — treat that as "skip the gate, don't block".
+
+**Recurring loops** (`/loop` and similar): at the top of each iteration, read
+`suggested_defer_seconds`. If it is positive, skip the iteration's real work
+and schedule the next wake-up past the reset instead — the loop's cadence
+routes itself around the exhausted window, no checkpointing needed. Note that
+self-scheduling wake-ups are often capped (e.g. 3600s); for longer waits chain
+several idle wake-ups or hand off to `quota_alarm.sh` (uncapped).
+
+**Multi-phase workflows**: check the gate at phase boundaries — the cleanest
+point to park, since "in progress / unverified" is naturally empty and resume
+starts exactly at phase N+1. A ready-made pattern ships in
+[`patterns/quota-phase-gate.md`](patterns/quota-phase-gate.md); copy it to
+`~/.claude/patterns/` and (if you use the patterns toolchain) declare its
+patch-anchor in your workflow patterns to backfill the gate into already
+instantiated commands via `/patterns --patch`.
+
+**Subagents**: the hook fires in subagent sessions too, but an alarm started
+inside a subagent orphans when the subagent exits. The skill instructs
+subagents to wind down and report back instead of archiving — the main
+session owns that decision.
+
 ## Boundaries
 
 - **Subscription (Pro/Max) accounts only.** API-key accounts have no quota windows; the plugin detects this and stays dormant — zero overhead, zero noise.
@@ -79,7 +114,24 @@ Nothing to do — the hook watches quota on every tool call (one throttled HTTPS
 ## Development
 
 ```bash
-tests/run_tests.sh    # 25 unit tests: sampling, gating, statusline, alarm, install roundtrip
+tests/run_tests.sh    # 28 unit tests: sampling, gating, statusline, alarm, --json, install roundtrip
 ```
+
+## Changelog
+
+### v0.2.0 (2026-07-12)
+
+Integration release — quota awareness for loops, workflows, and subagents:
+
+| Item | Change |
+|------|--------|
+| `quota_report.sh --json` | machine-readable output with `suggested_defer_seconds` for scheduling decisions |
+| Subagent branch | skill now instructs subagents to wind down and report back instead of starting orphan alarms |
+| `patterns/quota-phase-gate.md` | ready-made phase-boundary gate pattern with patch-anchor for the patterns toolchain |
+| README Integrations | loop / workflow / subagent integration guide |
+
+### v0.1.0 (2026-07-11)
+
+Initial release: oauth/usage + statusline sampling, PostToolUse alert hook, archive/alarm/wake skill protocol, /quota command, dual install paths.
 
 MIT License.
