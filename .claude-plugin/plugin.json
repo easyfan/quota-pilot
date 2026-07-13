@@ -1,6 +1,6 @@
 {
   "name": "quota-pilot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Quota-aware task scheduling — assess, checkpoint, and auto-resume before subscription rate limits hit, instead of crashing into them",
   "author": {
     "name": "easyfan",

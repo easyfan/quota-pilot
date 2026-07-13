@@ -40,7 +40,8 @@ anything new:
 
 Skip the assessment. Run the archive protocol immediately, then end your
 turn. At this level the reserve is nearly gone — every extra tool call risks
-dying mid-write.
+dying mid-write, so the protocol's ordering matters most here: alarm first,
+everything else after.
 
 ## If you are a subagent
 
@@ -54,34 +55,17 @@ the same alerts and owns the archive decision.
 
 ## Archive protocol
 
-Two independent decisions, deliberately decoupled: the checkpoint is an
-unconditional insurance policy (if this process dies — terminal closed,
-machine rebooted — the alarm dies with it and the checkpoint is the only
-recovery artifact). Resuming in *this* session is merely the default path.
+Order is load-bearing: **alarm first, checkpoint second**. The alarm is one
+cheap Bash call and it is the only thing that guarantees resume; a missing
+checkpoint can be reconstructed after wake-up, a session with no alarm never
+wakes at all. (Field incident, 2026-07-12: a fast burn cut the session down
+35 seconds after the critical alert — the checkpoint got written, the alarm
+never started, the session died at the prompt.) The checkpoint is still the
+unconditional insurance policy against *process* death (terminal closed,
+machine rebooted — the alarm dies with the process and the checkpoint is the
+only recovery artifact); it comes immediately after the alarm, not before.
 
-1. **Write the checkpoint** to `<project>/.claude/quota-checkpoint.md`,
-   exactly this structure:
-
-   ```markdown
-   # Quota Checkpoint — {ISO timestamp}
-   ## Task goal
-   The original request, one paragraph.
-   ## Done and verified
-   Only what was actually verified (tests run, output checked).
-   ## In progress / unverified
-   Honest half-done state: which edits are made but untested, which
-   commands were never run. This section prevents the classic blind-resume
-   bug: believing an unverified change is done.
-   ## Next step
-   The first thing to do on wake-up, concrete to the command/file level.
-   ## Key context
-   File paths, decisions made, dead ends already explored.
-   ## Recovery
-   Default: this session auto-resumes via the alarm. If the process died:
-   a fresh session should read this file and continue from "Next step".
-   ```
-
-2. **Start the alarm** with the `resets_at_epoch` from the alert, as a
+1. **Start the alarm** with the `resets_at_epoch` from the alert, as a
    background task (`run_in_background: true`). Extract the epoch integer by
    matching the pattern `resets_at_epoch=(\d+)` in the alert text; use the
    captured integer as the argument.
@@ -105,6 +89,28 @@ recovery artifact). Resuming in *this* session is merely the default path.
    echo QUOTA-RESET-WAKE
    ```
 
+2. **Write the checkpoint** to `<project>/.claude/quota-checkpoint.md`,
+   exactly this structure:
+
+   ```markdown
+   # Quota Checkpoint — {ISO timestamp}
+   ## Task goal
+   The original request, one paragraph.
+   ## Done and verified
+   Only what was actually verified (tests run, output checked).
+   ## In progress / unverified
+   Honest half-done state: which edits are made but untested, which
+   commands were never run. This section prevents the classic blind-resume
+   bug: believing an unverified change is done.
+   ## Next step
+   The first thing to do on wake-up, concrete to the command/file level.
+   ## Key context
+   File paths, decisions made, dead ends already explored.
+   ## Recovery
+   Default: this session auto-resumes via the alarm. If the process died:
+   a fresh session should read this file and continue from "Next step".
+   ```
+
 3. **End your turn.** Tell the user in one short paragraph: current
    utilization, where the checkpoint is, when the alarm will fire, and how to
    cancel early (`touch ~/.claude/quota-pilot/cancel`). Then stop — an idle
@@ -117,7 +123,10 @@ The background task's completion wakes the session. Read its output:
 - `QUOTA-RESET-WAKE` — the window has reset. Open the checkpoint, go straight
   to **In progress / unverified** and *verify* those items first (rerun the
   tests, re-check the half-made edits) before trusting them. Then continue
-  from **Next step**.
+  from **Next step**. If the checkpoint is missing or truncated (the archive
+  was cut off after the alarm started), reconstruct the state from your own
+  conversation context instead: verify what the last few tool calls actually
+  left on disk, then continue.
 - `QUOTA-ALARM-CANCELLED` — the user resumed you early by touching
   `~/.claude/quota-pilot/cancel`. Same procedure, but be aware quota may
   still be tight; keep units small.

@@ -58,6 +58,34 @@ fh = state["five_hour"]["utilization"]
 sd = state["seven_day"]["utilization"]
 resets = state["five_hour"]["resets_at_epoch"]
 
+# Burn-rate projection: fast burns pierce static thresholds. Incident 2026-07-12:
+# 91%→99% in 61s (parallel subagents) — the 88/95 thresholds left only ~96s
+# between first alert and hard cutoff. If the projected time-to-burnout is
+# short, escalate regardless of the current percentage.
+def burn_rate_per_min():
+    samples = []
+    try:
+        with open(os.path.join(qp_dir, "history.jsonl")) as f:
+            for ln in f:
+                try:
+                    e = json.loads(ln)
+                    if now - e["ts"] <= 600:
+                        samples.append((e["ts"], e["five_hour"]))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    if len(samples) >= 2:
+        (t0, v0), (t1, v1) = samples[0], samples[-1]
+        if t1 - t0 >= 45 and v1 > v0:
+            return (v1 - v0) / ((t1 - t0) / 60.0)
+    return None
+
+rate = burn_rate_per_min()
+ttb_min = (100.0 - fh) / rate if rate else None  # minutes to burnout
+ttb_crit = float(cfg.get("ttb_critical_minutes", 3))
+ttb_warn = float(cfg.get("ttb_warn_minutes", 10))
+
 gate_path = os.path.join(qp_dir, "gate.json")
 gate = load("gate.json", {})
 
@@ -72,6 +100,11 @@ if sd >= sd_warn_th and now - gate.get("last_7d_notice", 0) > 6 * 3600:
         pass
 
 level = "critical" if fh >= crit_th else "warn" if fh >= warn_th else None
+if ttb_min is not None:
+    if ttb_min <= ttb_crit:
+        level = "critical"
+    elif ttb_min <= ttb_warn and level is None:
+        level = "warn"
 
 def flush_gate():
     tmp = gate_path + ".tmp"
@@ -91,27 +124,31 @@ if now - gate.get("last_injected", {}).get(level, 0) < cooldown:
 
 reset_local = datetime.fromtimestamp(resets).strftime("%H:%M")
 mins_left = max(0, (resets - now) // 60)
+burn_note = (f" Burn rate ~{rate:.1f}%/min — projected exhaustion in "
+             f"~{ttb_min:.0f} min." if ttb_min is not None else "")
 
 if level == "warn":
     reason = (
         f"[quota-pilot] Rate-limit alert: the 5-hour usage window is at {fh:.0f}% "
-        f"(threshold {warn_th:.0f}%). It resets at {reset_local} local time "
+        f"(threshold {warn_th:.0f}%).{burn_note} It resets at {reset_local} local time "
         f"(~{mins_left} min from now, resets_at_epoch={resets}). "
         f"Assess now: can the next indivisible unit of work be completed within the "
         f"remaining budget, keeping a {reserve:.0f}% reserve for checkpointing? "
         f"If yes, continue working normally. If no, follow the quota-pilot skill's "
-        f"archive protocol: write the checkpoint file, start the wake-up alarm with "
-        f"quota_alarm.sh (run_in_background), then end your turn and wait. "
-        f"Consult the quota-pilot skill for the exact protocol."
+        f"archive protocol: START THE ALARM FIRST (one Bash call: quota_alarm.sh "
+        f"{resets} with run_in_background), then write the checkpoint, then end "
+        f"your turn and wait. Consult the quota-pilot skill for the exact protocol."
     )
 else:
     reason = (
         f"[quota-pilot] CRITICAL: the 5-hour usage window is at {fh:.0f}% "
-        f"(threshold {crit_th:.0f}%). Resets at {reset_local} local time "
+        f"(threshold {crit_th:.0f}%).{burn_note} Resets at {reset_local} local time "
         f"(~{mins_left} min from now, resets_at_epoch={resets}). "
-        f"Skip the assessment step. Immediately write the checkpoint per the "
-        f"quota-pilot skill, start the wake-up alarm with quota_alarm.sh "
-        f"(run_in_background), then end your turn."
+        f"Skip the assessment. Your VERY FIRST action now: start the wake-up alarm "
+        f"— one Bash call, quota_alarm.sh {resets}, run_in_background. The alarm is "
+        f"what guarantees resume; a checkpoint can be reconstructed later, a dead "
+        f"session cannot. Only after the alarm is running, write the checkpoint if "
+        f"budget remains, then end your turn."
     )
 
 gate.setdefault("last_injected", {})[level] = now

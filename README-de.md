@@ -68,6 +68,8 @@ Nichts zu tun — der Hook überwacht das Kontingent bei jedem Tool-Aufruf (gedr
 | `max_wait_hours` | 6 | darüber hinaus Mensch benachrichtigen statt warten |
 | `wake_jitter_minutes` | 5 | zufälliger Weck-Jitter (Schutz vor Multi-Session-Ansturm) |
 | `seven_day_warn` | 90 | Benachrichtigungsschwelle 7-Tage-Fenster (nur Hinweis) |
+| `ttb_critical_minutes` | 3 | prognostizierte Zeit bis zur Erschöpfung, die direkt critical auslöst |
+| `ttb_warn_minutes` | 10 | prognostizierte Zeit, die unterhalb der %-Schwelle warn auslöst |
 
 ## Integrationen
 
@@ -83,10 +85,22 @@ Der Hook-Alarm ist die *passive* Verteidigungslinie; Loops und mehrstufige Workf
 ## Entwicklung
 
 ```bash
-tests/run_tests.sh    # 28 Unit-Tests: Sampling, Gating, Statusline, Wecker, --json, Install-Roundtrip
+tests/run_tests.sh    # 31 Unit-Tests: Sampling, Gating, Burn-Rate, Statusline, Wecker, --json, Install-Roundtrip
 ```
 
 ## Changelog
+
+### v0.2.1 (2026-07-13)
+
+Korrekturen nach Praxisvorfall (schnelles Burn: Session 35s nach Critical-Alarm abgeschnitten, Wecker nie gestartet):
+
+| Punkt | Änderung |
+|-------|----------|
+| Wecker zuerst | Archivprotokoll umgekehrt: erst Wecker, dann Checkpoint |
+| Burn-Rate-Eskalation | Gate prognostiziert Zeit bis Erschöpfung: ≤3 min → critical, ≤10 min → warn |
+| Aufwach-Resilienz | fehlender Checkpoint → Zustand aus Konversationskontext rekonstruieren |
+
+Vollständige Notes: [README.md](README.md).
 
 ### v0.2.0 (2026-07-12)
 

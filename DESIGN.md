@@ -180,7 +180,7 @@ echo "QUOTA-RESET-WAKE"
 - **O2**：`decision:block` 在 PostToolUse 的语义副作用（tool_result 被标记 blocked 是否干扰特定流程）；备选注入通道 `additionalContext`/exit 2 stderr，实现期 A/B 验证
 - **O3**：后台任务时长上限——文档称 detached 跨 turn 存活，需源码/文档核实无硬上限（即便有，60s 循环的单次阻塞也不受影响，但整个后台任务的生命周期需要确认）
 - **O4**：checkpoint 与 CC 原生 auto-compact 的交互——若等待期间恰好触发 compact，唤醒后 checkpoint 是否仍在 context 中被正确引用（checkpoint 在磁盘上，重读即可，预期无碍，需实测）
-- **O5**：critical 档注入时机——PostToolUse 意味着至少要等当前 tool 完成，若单个 tool（如长 Bash）执行期间烧穿额度则来不及；是否需要 PreToolUse 配对拦截，实现期评估
+- **O5**：critical 档注入时机——PostToolUse 意味着至少要等当前 tool 完成，若单个 tool（如长 Bash）执行期间烧穿额度则来不及；是否需要 PreToolUse 配对拦截，实现期评估。**已被 2026-07-12 实战事故部分证实并缓解（v0.2.1）**：backtrader 会话以 8%/min 冲刺（并行 subagent），critical 注入后 35 秒撞穿——checkpoint 写完，闹钟没来得及挂，会话死在 prompt。两项修复：①归档协议翻转为**闹钟先行**（闹钟是唯一保证续跑的动作且最便宜，checkpoint 可事后重建，死会话不可复活）；②gate 增加 **burn-rate 预测升级**（history 近 10min 斜率推算烧穿时间，≤`ttb_critical_minutes`(3) 直接 critical 不论当前百分比，≤`ttb_warn_minutes`(10) 提前 warn——8%/min 下 75% 即拉响）。PreToolUse 配对拦截仍列 v2（撞死后模型无法自救的窗口依然存在，只是被大幅压缩）
 
 ## 9. 与 packer 体系的关系
 

@@ -68,6 +68,8 @@ Nothing to do — the hook watches quota on every tool call (one throttled HTTPS
 | `max_wait_hours` | 6 | beyond this, notify the human instead of idling |
 | `wake_jitter_minutes` | 5 | random wake jitter (multi-session stampede guard) |
 | `seven_day_warn` | 90 | 7-day window notification threshold (notify only) |
+| `ttb_critical_minutes` | 3 | projected time-to-burnout that escalates straight to critical |
+| `ttb_warn_minutes` | 10 | projected time-to-burnout that raises a warn below the % threshold |
 
 ## Integrations
 
@@ -114,10 +116,20 @@ session owns that decision.
 ## Development
 
 ```bash
-tests/run_tests.sh    # 28 unit tests: sampling, gating, statusline, alarm, --json, install roundtrip
+tests/run_tests.sh    # 31 unit tests: sampling, gating, burn-rate, statusline, alarm, --json, install roundtrip
 ```
 
 ## Changelog
+
+### v0.2.1 (2026-07-13)
+
+Field-incident fixes — a fast burn (8%/min from parallel subagents) cut a session down 35s after the critical alert; the checkpoint got written but the alarm never started:
+
+| Item | Change |
+|------|--------|
+| Alarm-first ordering | archive protocol reversed: start the alarm (one cheap Bash call) *before* writing the checkpoint; hook alert text matches |
+| Burn-rate escalation | the gate projects time-to-burnout from recent samples; ≤3 min → critical regardless of current %, ≤10 min → warn (`ttb_critical_minutes` / `ttb_warn_minutes`) |
+| Wake-up resilience | missing/truncated checkpoint after a cut-off archive → reconstruct state from conversation context |
 
 ### v0.2.0 (2026-07-12)
 

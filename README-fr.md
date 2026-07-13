@@ -68,6 +68,8 @@ Rien à faire — le hook surveille le quota à chaque appel d'outil (au plus un
 | `max_wait_hours` | 6 | au-delà, notifier l'humain au lieu d'attendre |
 | `wake_jitter_minutes` | 5 | jitter aléatoire de réveil (garde anti-ruée multi-sessions) |
 | `seven_day_warn` | 90 | seuil de notification fenêtre 7 jours (notification seule) |
+| `ttb_critical_minutes` | 3 | temps projeté avant épuisement déclenchant directement critical |
+| `ttb_warn_minutes` | 10 | temps projeté déclenchant warn sous le seuil de % |
 
 ## Intégrations
 
@@ -83,10 +85,22 @@ L'alerte du hook est la ligne de défense *passive* ; les boucles et workflows m
 ## Développement
 
 ```bash
-tests/run_tests.sh    # 28 tests unitaires : échantillonnage, gating, statusline, réveil, --json, aller-retour d'installation
+tests/run_tests.sh    # 31 tests unitaires : échantillonnage, gating, burn-rate, statusline, réveil, --json, aller-retour d'installation
 ```
 
 ## Journal des modifications
+
+### v0.2.1 (2026-07-13)
+
+Corrections après incident réel (burn rapide : session coupée 35 s après l'alerte critical, réveil jamais démarré) :
+
+| Élément | Changement |
+|---------|------------|
+| Réveil d'abord | protocole d'archivage inversé : réveil avant checkpoint |
+| Escalade burn-rate | le gate projette le temps avant épuisement : ≤3 min → critical, ≤10 min → warn |
+| Résilience au réveil | checkpoint manquant → reconstruire l'état depuis le contexte |
+
+Notes complètes : [README.md](README.md).
 
 ### v0.2.0 (2026-07-12)
 

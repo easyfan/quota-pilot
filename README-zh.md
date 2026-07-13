@@ -68,6 +68,8 @@ cd quota-pilot
 | `max_wait_hours` | 6 | 超过则通知人工而非傻等 |
 | `wake_jitter_minutes` | 5 | 唤醒随机抖动（多会话防踩踏） |
 | `seven_day_warn` | 90 | 7d 窗口通知阈值（仅通知） |
+| `ttb_critical_minutes` | 3 | 预测烧穿时间低于此值直接 critical（不论当前 %） |
+| `ttb_warn_minutes` | 10 | 预测烧穿时间低于此值提前 warn |
 
 ## 集成
 
@@ -93,10 +95,20 @@ hook 告警是*被动*防线；loop 和多阶段工作流应主动查询：
 ## 开发
 
 ```bash
-tests/run_tests.sh    # 28 个单元测试：采样、决策、statusline、闹钟、--json、安装往返
+tests/run_tests.sh    # 31 个单元测试：采样、决策、burn-rate、statusline、闹钟、--json、安装往返
 ```
 
 ## 更新日志
+
+### v0.2.1 (2026-07-13)
+
+实战事故修复（8%/min 快烧下 critical 告警后 35 秒撞穿，checkpoint 写了但闹钟没启动）：
+
+| 项目 | 变更 |
+|------|------|
+| 闹钟先行 | 归档协议顺序翻转：先挂闹钟（一次廉价 Bash 调用）再写 checkpoint |
+| burn-rate 升级 | gate 用近期采样预测烧穿时间：≤3 分钟直接 critical，≤10 分钟提前 warn |
+| 唤醒韧性 | checkpoint 缺失/截断时从会话上下文重建状态 |
 
 ### v0.2.0 (2026-07-12)
 

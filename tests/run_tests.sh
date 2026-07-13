@@ -85,6 +85,25 @@ seed_state "$QG2" 96 $((NOW-1200)) $((NOW+3600))
 OUT=$(gate "$QG2")
 [ -z "$OUT" ]; check "stale state (>10min): silent" $?
 
+QB="$TMP/g3"; mkdir -p "$QB"
+seed_state "$QB" 74 "$NOW" $((NOW+3600))
+printf '{"ts":%s,"five_hour":50.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":74.0,"seven_day":10.0,"five_hour_resets_at":%s}\n' \
+  $((NOW-120)) $((NOW+3600)) $((NOW-1)) $((NOW+3600)) > "$QB/history.jsonl"
+OUT=$(gate "$QB")
+echo "$OUT" | grep -q "CRITICAL" && echo "$OUT" | grep -q "projected exhaustion"
+check "fast burn (12%/min at 74%): projected-burnout escalates to critical" $?
+echo "$OUT" | python3 -c "
+import json,sys;d=json.load(sys.stdin)
+assert 'VERY FIRST action' in d['reason'] and d['reason'].index('alarm') < d['reason'].index('checkpoint')" 2>/dev/null
+check "critical reason: alarm-first ordering" $?
+
+QB2="$TMP/g4"; mkdir -p "$QB2"
+seed_state "$QB2" 75 "$NOW" $((NOW+3600))
+printf '{"ts":%s,"five_hour":73.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":75.0,"seven_day":10.0,"five_hour_resets_at":%s}\n' \
+  $((NOW-300)) $((NOW+3600)) $((NOW-1)) $((NOW+3600)) > "$QB2/history.jsonl"
+OUT=$(gate "$QB2")
+[ -z "$OUT" ]; check "slow burn (0.4%/min at 75%): silent" $?
+
 echo "== statusline.sh =="
 QS="$TMP/sl"; mkdir -p "$QS"
 SL_INPUT='{"rate_limits":{"five_hour":{"used_percentage":24,"resets_at":'$((NOW+7200))'},"seven_day":{"used_percentage":8,"resets_at":'$((NOW+86400))'}}}'
