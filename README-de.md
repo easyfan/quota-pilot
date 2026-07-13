@@ -90,6 +90,18 @@ tests/run_tests.sh    # 31 Unit-Tests: Sampling, Gating, Burn-Rate, Statusline, 
 
 ## Changelog
 
+### v0.2.2 (2026-07-14)
+
+Folgemaßnahme zur Burn-Rate-Eskalation aus v0.2.1 — Fehlalarme durch Abrechnungs-Spitzen unterdrücken. Vorfall 2026-07-13: ein Sampler-Sprung 36%→59% in 66s pausierte eine Sitzung bei 65%, obwohl noch 4,5h Fenster übrig waren.
+
+| Punkt | Änderung |
+|-------|----------|
+| Mindest-Beobachtungsspanne | Projektion nur bei Sample-Spanne ≥ `ttb_min_span_seconds` (180) |
+| Minimum der Raten | projizierte Rate = `min(Fenster, letztes Intervall)` — eine abflachende Spitze projiziert nicht weiter |
+| Echte Bursts unberührt | anhaltende schnelle Bursts eskalieren weiterhin; ein „Auslastungs-Floor" wurde geprüft und verworfen |
+
+Siehe [README.md](README.md) für die vollständigen englischen Release Notes.
+
 ### v0.2.1 (2026-07-13)
 
 Korrekturen nach Praxisvorfall (schnelles Burn: Session 35s nach Critical-Alarm abgeschnitten, Wecker nie gestartet):

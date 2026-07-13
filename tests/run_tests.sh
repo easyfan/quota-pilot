@@ -87,11 +87,11 @@ OUT=$(gate "$QG2")
 
 QB="$TMP/g3"; mkdir -p "$QB"
 seed_state "$QB" 74 "$NOW" $((NOW+3600))
-printf '{"ts":%s,"five_hour":50.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":74.0,"seven_day":10.0,"five_hour_resets_at":%s}\n' \
-  $((NOW-120)) $((NOW+3600)) $((NOW-1)) $((NOW+3600)) > "$QB/history.jsonl"
+printf '{"ts":%s,"five_hour":30.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":52.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":74.0,"seven_day":10.0,"five_hour_resets_at":%s}\n' \
+  $((NOW-239)) $((NOW+3600)) $((NOW-120)) $((NOW+3600)) $((NOW-1)) $((NOW+3600)) > "$QB/history.jsonl"
 OUT=$(gate "$QB")
 echo "$OUT" | grep -q "CRITICAL" && echo "$OUT" | grep -q "projected exhaustion"
-check "fast burn (12%/min at 74%): projected-burnout escalates to critical" $?
+check "sustained fast burn (11%/min over 4 min at 74%): projected-burnout escalates to critical" $?
 echo "$OUT" | python3 -c "
 import json,sys;d=json.load(sys.stdin)
 assert 'VERY FIRST action' in d['reason'] and d['reason'].index('alarm') < d['reason'].index('checkpoint')" 2>/dev/null
@@ -103,6 +103,26 @@ printf '{"ts":%s,"five_hour":73.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"
   $((NOW-300)) $((NOW+3600)) $((NOW-1)) $((NOW+3600)) > "$QB2/history.jsonl"
 OUT=$(gate "$QB2")
 [ -z "$OUT" ]; check "slow burn (0.4%/min at 75%): silent" $?
+
+# Regression, incident 2026-07-13: a 2-sample settlement spike (36→59 in 66s)
+# projected 20.9%/min and paused a session at 59% — window span below
+# ttb_min_span_seconds must yield no projection at all.
+QB3="$TMP/g5"; mkdir -p "$QB3"
+seed_state "$QB3" 59 "$NOW" $((NOW+16000))
+printf '{"ts":%s,"five_hour":36.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":59.0,"seven_day":10.0,"five_hour_resets_at":%s}\n' \
+  $((NOW-66)) $((NOW+16000)) $((NOW-1)) $((NOW+16000)) > "$QB3/history.jsonl"
+OUT=$(gate "$QB3")
+[ -z "$OUT" ]; check "short-span spike (36→59 in 66s at 59%): silent" $?
+
+# Same incident, 6 min later: spike still inside the 10-min window inflates
+# the window rate (3.75%/min) but the trailing interval is flat (0.9%/min) —
+# min(window, trailing) must reject the projection.
+QB4="$TMP/g6"; mkdir -p "$QB4"
+seed_state "$QB4" 65 "$NOW" $((NOW+16000))
+printf '{"ts":%s,"five_hour":36.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":59.0,"seven_day":10.0,"five_hour_resets_at":%s}\n{"ts":%s,"five_hour":65.0,"seven_day":10.0,"five_hour_resets_at":%s}\n' \
+  $((NOW-464)) $((NOW+16000)) $((NOW-398)) $((NOW+16000)) $((NOW-1)) $((NOW+16000)) > "$QB4/history.jsonl"
+OUT=$(gate "$QB4")
+[ -z "$OUT" ]; check "spike-then-flat (spike in window, trailing 0.9%/min at 65%): silent" $?
 
 echo "== statusline.sh =="
 QS="$TMP/sl"; mkdir -p "$QS"

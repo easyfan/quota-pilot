@@ -62,7 +62,17 @@ resets = state["five_hour"]["resets_at_epoch"]
 # 91%→99% in 61s (parallel subagents) — the 88/95 thresholds left only ~96s
 # between first alert and hard cutoff. If the projected time-to-burnout is
 # short, escalate regardless of the current percentage.
+#
+# Two guards against spike false-positives (incident 2026-07-13: a 36%→59%
+# settlement spike over 66s projected 20.9%/min and paused a session at 65%
+# with 4.5h of window left):
+#   1. the observation window must span >= ttb_min_span_seconds (default 180)
+#   2. the rate is min(window rate, trailing-interval rate) — a one-off spike
+#      followed by flat burn must not keep projecting for 10 minutes.
+# Sustained fast burns still escalate within ~3 min of samples; the 91→99
+# high-utilization case is already covered by the static 88/95 thresholds.
 def burn_rate_per_min():
+    min_span = float(cfg.get("ttb_min_span_seconds", 180))
     samples = []
     try:
         with open(os.path.join(qp_dir, "history.jsonl")) as f:
@@ -75,11 +85,18 @@ def burn_rate_per_min():
                     pass
     except Exception:
         pass
-    if len(samples) >= 2:
-        (t0, v0), (t1, v1) = samples[0], samples[-1]
-        if t1 - t0 >= 45 and v1 > v0:
-            return (v1 - v0) / ((t1 - t0) / 60.0)
-    return None
+    if len(samples) < 2:
+        return None
+    (t0, v0), (t1, v1) = samples[0], samples[-1]
+    if t1 - t0 < min_span or v1 <= v0:
+        return None
+    window_rate = (v1 - v0) / ((t1 - t0) / 60.0)
+    recent_rate = window_rate
+    for ta, va in reversed(samples[:-1]):
+        if t1 - ta >= 45:
+            recent_rate = max(0.0, v1 - va) / ((t1 - ta) / 60.0)
+            break
+    return min(window_rate, recent_rate)
 
 rate = burn_rate_per_min()
 ttb_min = (100.0 - fh) / rate if rate else None  # minutes to burnout

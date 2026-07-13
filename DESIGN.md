@@ -181,6 +181,7 @@ echo "QUOTA-RESET-WAKE"
 - **O3**：后台任务时长上限——文档称 detached 跨 turn 存活，需源码/文档核实无硬上限（即便有，60s 循环的单次阻塞也不受影响，但整个后台任务的生命周期需要确认）
 - **O4**：checkpoint 与 CC 原生 auto-compact 的交互——若等待期间恰好触发 compact，唤醒后 checkpoint 是否仍在 context 中被正确引用（checkpoint 在磁盘上，重读即可，预期无碍，需实测）
 - **O5**：critical 档注入时机——PostToolUse 意味着至少要等当前 tool 完成，若单个 tool（如长 Bash）执行期间烧穿额度则来不及；是否需要 PreToolUse 配对拦截，实现期评估。**已被 2026-07-12 实战事故部分证实并缓解（v0.2.1）**：backtrader 会话以 8%/min 冲刺（并行 subagent），critical 注入后 35 秒撞穿——checkpoint 写完，闹钟没来得及挂，会话死在 prompt。两项修复：①归档协议翻转为**闹钟先行**（闹钟是唯一保证续跑的动作且最便宜，checkpoint 可事后重建，死会话不可复活）；②gate 增加 **burn-rate 预测升级**（history 近 10min 斜率推算烧穿时间，≤`ttb_critical_minutes`(3) 直接 critical 不论当前百分比，≤`ttb_warn_minutes`(10) 提前 warn——8%/min 下 75% 即拉响）。PreToolUse 配对拦截仍列 v2（撞死后模型无法自救的窗口依然存在，只是被大幅压缩）
+- **O5 续（v0.2.2）**：burn-rate 升级带来的**结算尖峰误报**——2026-07-13 实战事故：采样值 36%→59% 在 66 秒内跳变（API 用量批量结算的伪影，非真实持续燃烧），旧 gate 投影出 20.9%/min → 判定 ~2 分钟烧穿 → 在 65%、窗口尚剩 4.5h 时误触发 critical 暂停。两道护栏消除误报：①**最小观测跨度** `ttb_min_span_seconds`(180)——两样本跨度不足 180 秒不投影，直接挡掉 66 秒尖峰；②**取小率** `min(window_rate, trailing_rate)`——尖峰后转平的序列（窗口率 3.75%/min 但尾段仅 0.9%/min）按尾段算，不再持续投影 10 分钟。真实持续快燃（≥180 秒稳定斜率）仍照常升级，91→99 高位场景本就由 88/95 静态阈值覆盖。**曾评估但否决了"用量下限 floor"方案**：floor 无法区分真实持续燃烧与结算伪影，会把 74% 持续 11%/min（距烧穿 2.4min）这类真阳性一并误杀，两道跨度/速率护栏才是正确的区分手段。
 
 ## 9. 与 packer 体系的关系
 
@@ -199,3 +200,5 @@ echo "QUOTA-RESET-WAKE"
 4. ✅ **长工作流阶段边界额度门**（patterns/quota-phase-gate.md 分发；本机 committee-review 已示范接入 anchor）：多阶段 pipeline 在 Phase 边界查额度，不够则在边界存档（此时"进行中/未验证"天然为空，唤醒后直接进下一 Phase）。落地复用 patterns 的 patch-anchor 机制，`/patterns --patch` 批量补进已实例化工作流。
 5. **spawn 前预检**：主会话启动昂贵操作（committee 一轮 5-15%）前主动查 state.json，事前预检替代事后告警。
 6. 既有 v2 项：盲重试 watcher、7d 策略细化、burn rate 预测精化、O5 的 PreToolUse 配对拦截。
+
+相关项目（非本项目工作项）：context-pilot（context 管理工具，设计笔记见 `~/wiki/pages/ccm_context-pilot-design.md`）——与本项目共享 checkpoint schema 与 hook 注入骨架，但稀缺资源/采样层/唤醒向量均不同，独立立项；唯一集成点是 ④ 的 phase 边界 patch-anchor，未来可在同一锚点同时挂额度门与正交门。

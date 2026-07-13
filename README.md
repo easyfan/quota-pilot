@@ -121,6 +121,16 @@ tests/run_tests.sh    # 31 unit tests: sampling, gating, burn-rate, statusline, 
 
 ## Changelog
 
+### v0.2.2 (2026-07-14)
+
+Follow-up to v0.2.1's burn-rate escalation — suppress settlement-spike false positives. Incident 2026-07-13: a 36%→59% sampler jump in 66s (a usage-settlement artifact, not real burn) projected 20.9%/min and paused a session at 65% with 4.5h of window left.
+
+| Item | Change |
+|------|--------|
+| Min observation span | burn-rate projection requires a sample span ≥ `ttb_min_span_seconds` (180); a sub-180s spike yields no projection at all |
+| Min-of-rates | projected rate is `min(window, trailing-interval)` — a spike that then flattens stops projecting for the rest of the 10-min window |
+| Genuine burns unaffected | sustained fast burns (≥180s steady slope) still escalate; the 91→99 high-utilization case stays covered by the static 88/95 thresholds. A "utilization floor" was evaluated and rejected — it cannot tell real burn from an artifact and would suppress true positives |
+
 ### v0.2.1 (2026-07-13)
 
 Field-incident fixes — a fast burn (8%/min from parallel subagents) cut a session down 35s after the critical alert; the checkpoint got written but the alarm never started:

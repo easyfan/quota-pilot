@@ -90,6 +90,18 @@ tests/run_tests.sh    # 31 tests unitaires : échantillonnage, gating, burn-rate
 
 ## Journal des modifications
 
+### v0.2.2 (2026-07-14)
+
+Suite de l'escalade par taux de consommation de v0.2.1 — supprimer les faux positifs dus aux pics de règlement. Incident 2026-07-13 : un saut d'échantillon 36%→59% en 66s a mis une session en pause à 65% alors qu'il restait 4,5h de fenêtre.
+
+| Élément | Changement |
+|---------|-----------|
+| Portée d'observation min. | projection uniquement si la portée des échantillons ≥ `ttb_min_span_seconds` (180) |
+| Minimum des taux | taux projeté = `min(fenêtre, dernier intervalle)` — un pic qui s'aplatit cesse de projeter |
+| Vrais bursts intacts | les bursts rapides soutenus escaladent toujours ; un « plancher d'utilisation » a été évalué puis rejeté |
+
+Voir [README.md](README.md) pour les notes de version complètes en anglais.
+
 ### v0.2.1 (2026-07-13)
 
 Corrections après incident réel (burn rapide : session coupée 35 s après l'alerte critical, réveil jamais démarré) :
