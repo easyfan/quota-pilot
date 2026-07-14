@@ -43,6 +43,16 @@ NOW=$(date +%s)
 JITTER=$(( RANDOM % (JITTER_MIN * 60 + 1) ))
 TARGET=$(( RESETS_AT + 120 + JITTER ))
 
+# Liveness marker for the SessionStart recovery hook (quota_recover.sh). While
+# this alarm is waiting the checkpoint sits on disk, so "checkpoint exists" alone
+# cannot tell a live park from an orphaned one. The marker records our PID and the
+# reset time; the trap removes it on every exit, so a marker whose PID is dead (or
+# whose reset is long past) is the unambiguous orphan signal. project path is left
+# out on purpose — only pid+resets_at drive the decision, and this keeps the JSON
+# free of paths that would need escaping.
+printf '{"pid":%s,"resets_at":%s}\n' "$$" "$RESETS_AT" > "$QP_DIR/alarm.pid"
+trap 'rm -f "$QP_DIR/alarm.pid"' EXIT
+
 if [ $(( TARGET - NOW )) -gt $(( MAX_WAIT_H * 3600 )) ]; then
   osascript -e 'display notification "Wait exceeds max_wait_hours — manual resume needed" with title "quota-pilot"' 2>/dev/null || true
   echo "QUOTA-WAIT-TOO-LONG target=$TARGET now=$NOW max_wait_hours=$MAX_WAIT_H"

@@ -123,10 +123,13 @@ The background task's completion wakes the session. Read its output:
 - `QUOTA-RESET-WAKE` — the window has reset. Open the checkpoint, go straight
   to **In progress / unverified** and *verify* those items first (rerun the
   tests, re-check the half-made edits) before trusting them. Then continue
-  from **Next step**. If the checkpoint is missing or truncated (the archive
-  was cut off after the alarm started), reconstruct the state from your own
-  conversation context instead: verify what the last few tool calls actually
-  left on disk, then continue.
+  from **Next step**. Once the work is genuinely resumed, **delete the
+  checkpoint** (`rm` the file): a checkpoint left on disk is exactly the signal
+  the SessionStart recovery hook uses to detect an *abandoned* park, so leaving
+  a consumed one behind causes false recovery prompts in later sessions. If the
+  checkpoint is missing or truncated (the archive was cut off after the alarm
+  started), reconstruct the state from your own conversation context instead:
+  verify what the last few tool calls actually left on disk, then continue.
 - `QUOTA-ALARM-CANCELLED` — the user resumed you early by touching
   `~/.claude/quota-pilot/cancel`. Same procedure, but be aware quota may
   still be tight; keep units small.
@@ -137,6 +140,20 @@ The background task's completion wakes the session. Read its output:
 
 ## Notes
 
+- **Process-death recovery.** The alarm lives inside the session process; if
+  that process is closed before the window resets (terminal shut, machine
+  rebooted, a spuriously-paused session abandoned), the alarm dies with it and
+  nothing auto-wakes. The checkpoint is the recovery artifact — and a
+  SessionStart hook (`quota_recover.sh`) surfaces a leftover
+  `quota-checkpoint.md` the next time a session cold-starts in that project, so
+  the orphaned park is not silently lost. It fires only for a *genuine* orphan:
+  a still-waiting alarm records its PID in `alarm.pid`, so the hook stays silent
+  while that process is alive (and on an in-place `resume`) and speaks up only
+  once the alarm is dead. This is why the wake-up protocol deletes the checkpoint
+  on a successful resume — a leftover file with no live alarm is exactly the
+  orphan signal.
+  Write the checkpoint to the canonical `<project>/.claude/quota-checkpoint.md`
+  (the hook also tolerates a project-root fallback, but `.claude/` is correct).
 - Quota is account-level. If several sessions archive at once they all wait
   on the same window; the alarm adds random jitter so they do not stampede.
   Keep concurrent long-running parked sessions to ≤2.

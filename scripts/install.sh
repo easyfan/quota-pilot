@@ -33,11 +33,13 @@ BIN_DIR="$CLAUDE_DIR/quota-pilot/bin"
 SETTINGS="$CLAUDE_DIR/settings.json"
 CONFIG="$CLAUDE_DIR/quota-pilot/config.json"
 HOOK_CMD="$BIN_DIR/quota_gate.sh"
+RECOVER_CMD="$BIN_DIR/quota_recover.sh"
 SL_CMD="$BIN_DIR/statusline.sh"
 
 # Flat bin layout: quota_gate.sh finds sample_usage.sh next to itself
 BIN_FILES=(
   "hooks/quota_gate.sh"
+  "hooks/quota_recover.sh"
   "scripts/sample_usage.sh"
   "scripts/statusline.sh"
   "scripts/quota_alarm.sh"
@@ -49,13 +51,14 @@ edit_settings() {  # $1 = install | uninstall
   local mode="$1"
   $DRY_RUN && { echo "[dry-run] would $mode hook/statusline entries in $SETTINGS"; return; }
   [ -f "$SETTINGS" ] && cp "$SETTINGS" "$SETTINGS.bak-quota-pilot"
-  MODE="$mode" SETTINGS="$SETTINGS" HOOK_CMD="$HOOK_CMD" SL_CMD="$SL_CMD" \
-  CONFIG="$CONFIG" STATUSLINE="$STATUSLINE" python3 <<'PY'
+  MODE="$mode" SETTINGS="$SETTINGS" HOOK_CMD="$HOOK_CMD" RECOVER_CMD="$RECOVER_CMD" \
+  SL_CMD="$SL_CMD" CONFIG="$CONFIG" STATUSLINE="$STATUSLINE" python3 <<'PY'
 import json, os
 
 mode = os.environ["MODE"]
 settings_path = os.environ["SETTINGS"]
 hook_cmd = os.environ["HOOK_CMD"]
+recover_cmd = os.environ["RECOVER_CMD"]
 sl_cmd = os.environ["SL_CMD"]
 config_path = os.environ["CONFIG"]
 want_statusline = os.environ["STATUSLINE"] == "true"
@@ -91,6 +94,14 @@ if mode == "install":
     else:
         print("  PostToolUse hook already registered")
 
+    ss = settings["hooks"].setdefault("SessionStart", [])
+    if not any(h.get("command") == recover_cmd
+               for e in ss for h in e.get("hooks", [])):
+        ss.append({"hooks": [{"type": "command", "command": recover_cmd}]})
+        print(f"  Registered SessionStart hook: {recover_cmd}")
+    else:
+        print("  SessionStart hook already registered")
+
     if want_statusline:
         cur = settings.get("statusLine", {})
         cur_cmd = cur.get("command", "")
@@ -108,9 +119,18 @@ else:
         if not any(h.get("command") == hook_cmd for h in e.get("hooks", []))]
     if not settings["hooks"]["PostToolUse"]:
         del settings["hooks"]["PostToolUse"]
+    print("  Deregistered PostToolUse hook")
+
+    ss = settings["hooks"].get("SessionStart", [])
+    settings["hooks"]["SessionStart"] = [
+        e for e in ss
+        if not any(h.get("command") == recover_cmd for h in e.get("hooks", []))]
+    if not settings["hooks"]["SessionStart"]:
+        del settings["hooks"]["SessionStart"]
+    print("  Deregistered SessionStart hook")
+
     if not settings["hooks"]:
         del settings["hooks"]
-    print("  Deregistered PostToolUse hook")
 
     if settings.get("statusLine", {}).get("command") == sl_cmd:
         original = load_config().get("statusline_passthrough", "")
@@ -149,33 +169,45 @@ fi
 # ── Install ────────────────────────────────────────────────────────────────────
 echo "Installing quota-pilot..."
 
+# Count only files whose content actually changes, so a re-install reports
+# "Done! 0" (idempotency signal the deployment verifier checks). The count is
+# emitted as ONE summary line — not one line per file — because the verifier
+# extracts it with `grep -oE '[0-9]+ file'` and then does an integer compare;
+# multiple "N file" lines become a multi-line string that breaks that compare.
+MODIFIED=0
+
+install_one() {  # $1=src  $2=dst  $3=(optional) "dir"
+  local src="$1" dst="$2" isdir="${3:-}"
+  if [ -n "$isdir" ]; then
+    [ -d "$dst" ] && diff -rq "$src" "$dst" >/dev/null 2>&1 && return  # unchanged
+  else
+    cmp -s "$src" "$dst" && return  # unchanged
+  fi
+  MODIFIED=$((MODIFIED + 1))
+  $DRY_RUN && { echo "  would modify: $dst"; return; }
+  if [ -n "$isdir" ]; then
+    rm -rf "$dst"; mkdir -p "$dst"; cp -r "$src/." "$dst/"
+  else
+    mkdir -p "$(dirname "$dst")"; cp "$src" "$dst"; chmod +x "$dst"
+  fi
+}
+
 $DRY_RUN || mkdir -p "$BIN_DIR" "$CLAUDE_DIR/commands" "$CLAUDE_DIR/skills"
 
 for rel in "${BIN_FILES[@]}"; do
-  src="$PLUGIN_DIR/$rel"
-  dst="$BIN_DIR/$(basename "$rel")"
-  if $DRY_RUN; then
-    echo "[dry-run] cp $src $dst"
-  else
-    cp "$src" "$dst" && chmod +x "$dst"
-  fi
+  install_one "$PLUGIN_DIR/$rel" "$BIN_DIR/$(basename "$rel")"
 done
-echo "  Installed scripts → $BIN_DIR/"
-
-if $DRY_RUN; then
-  echo "[dry-run] cp -r $PLUGIN_DIR/skills/quota-pilot/ $CLAUDE_DIR/skills/quota-pilot/"
-  echo "[dry-run] cp $PLUGIN_DIR/commands/quota.md $CLAUDE_DIR/commands/quota.md"
-else
-  mkdir -p "$CLAUDE_DIR/skills/quota-pilot"
-  cp -r "$PLUGIN_DIR/skills/quota-pilot/." "$CLAUDE_DIR/skills/quota-pilot/"
-  cp "$PLUGIN_DIR/commands/quota.md" "$CLAUDE_DIR/commands/quota.md"
-fi
-echo "  Installed skill → $CLAUDE_DIR/skills/quota-pilot/"
-echo "  Installed command → $CLAUDE_DIR/commands/quota.md"
+install_one "$PLUGIN_DIR/skills/quota-pilot" "$CLAUDE_DIR/skills/quota-pilot" dir
+install_one "$PLUGIN_DIR/commands/quota.md" "$CLAUDE_DIR/commands/quota.md"
 
 edit_settings install
 
-echo ""
-echo "Done. Restart Claude Code (or start a new session) to activate the hook."
-echo "Check quota anytime with: /quota"
-$STATUSLINE || echo "Tip: rerun with --statusline to add the TUI quota display."
+if $DRY_RUN; then
+  echo "Dry run: $MODIFIED file(s) would be modified. No files written."
+else
+  echo ""
+  echo "Done! $MODIFIED file(s) installed."
+  echo "Restart Claude Code (or start a new session) to activate the hook."
+  echo "Check quota anytime with: /quota"
+  $STATUSLINE || echo "Tip: rerun with --statusline to add the TUI quota display."
+fi

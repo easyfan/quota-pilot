@@ -147,7 +147,7 @@ echo "QUOTA-RESET-WAKE"
 | 非订阅（API key）用户 | 无 claudeAiOauth 凭据（主后端）也无 rate_limits 字段（辅后端），采样层写不出数据，hook 静默 no-op，插件等效休眠 |
 | headless / SDK / happy 环境 | statusline 不运行（V4），但主后端 oauth/usage 轮询 + PostToolUse hook 均正常工作（V2/V6），插件全功能生效 |
 | 用户 mid-task 手动改 statusline | 仅影响辅后端显示；主后端采样不受影响 |
-| 进程死亡 | 闹钟陪葬，checkpoint 存活；新会话读 checkpoint 人工/脚本恢复 |
+| 进程死亡 | 闹钟陪葬，checkpoint 存活；**v0.3.0 起 SessionStart hook `quota_recover.sh` 在新会话冷启动时自动顶出遗留 checkpoint**（不再依赖人工）。孤儿判定靠 `alarm.pid`（闹钟启动写、退出 trap 清除）：`kill -0` 判活 + reset guard，活着或 `source=resume` 则静默，只对真孤儿注入恢复提示；提示含 `rm <ckpt>` 逃生出口。详见 wiki `quota-pilot-session-recover-hook` |
 
 ## 6. 配置（`~/.claude/quota-pilot/config.json`）
 
@@ -200,5 +200,7 @@ echo "QUOTA-RESET-WAKE"
 4. ✅ **长工作流阶段边界额度门**（patterns/quota-phase-gate.md 分发；本机 committee-review 已示范接入 anchor）：多阶段 pipeline 在 Phase 边界查额度，不够则在边界存档（此时"进行中/未验证"天然为空，唤醒后直接进下一 Phase）。落地复用 patterns 的 patch-anchor 机制，`/patterns --patch` 批量补进已实例化工作流。
 5. **spawn 前预检**：主会话启动昂贵操作（committee 一轮 5-15%）前主动查 state.json，事前预检替代事后告警。
 6. 既有 v2 项：盲重试 watcher、7d 策略细化、burn rate 预测精化、O5 的 PreToolUse 配对拦截。
+7. **缺口③ model-scoped 限额盲区**（2026-07-14 取证）：oauth/usage 响应 `limits[]` 含 `weekly_scoped(scope.model=...)` 逐模型限额，但 `sample_usage.sh` 只取 `five_hour`/`seven_day`，全丢。实战：Fable 5 撞墙时 5h 仅 34%。修向：采 `limits[]` 取绑定限额（最高 util/severity）；scoped-model 限额改为"提示换模型 `/model`"而非 park（周级重置不该傻等）。详见 wiki `quota-pilot-model-scoped-limits`。
+8. **缺口④ committee 并行 subagent 燃烧盲区**（2026-07-14 取证，O5 最严重形态）：并行 subagent 阻塞期主会话发不出 PostToolUse → gate 聋哑、无法 park；烧额度的 subagent 又不能 park。实战：4 subagent 4 分钟 82%→100% 撞墙。**结构上 quota-pilot hook 治不了**——介入必须在发起 spawn 的 coordinator（阻塞前、主会话内），按配额档做拓扑三选一：充足→并发／紧→接续串行（拆回 PostToolUse 序列，恢复视野与可 park 性，为支点）／危急→不执行先 park。归属：quota-pilot 只提供仪表（`quota_report.sh --json`），决策落 `quota-phase-gate` pattern 的 spawn 前门，subagent 保持无状态。详见 wiki `quota-pilot-subagent-burn-blindspot`。
 
 相关项目（非本项目工作项）：context-pilot（context 管理工具，设计笔记见 `~/wiki/pages/ccm_context-pilot-design.md`）——与本项目共享 checkpoint schema 与 hook 注入骨架，但稀缺资源/采样层/唤醒向量均不同，独立立项；唯一集成点是 ④ 的 phase 边界 patch-anchor，未来可在同一锚点同时挂额度门与正交门。

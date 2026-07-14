@@ -147,6 +147,7 @@ QA="$TMP/a1"; mkdir -p "$QA"
 echo '{"wake_jitter_minutes":0}' > "$QA/config.json"
 OUT=$(QUOTA_PILOT_DIR="$QA" QUOTA_PILOT_ALARM_TICK=1 "$ROOT/scripts/quota_alarm.sh" $((NOW-300)))
 [ "$OUT" = "QUOTA-RESET-WAKE" ]; check "past deadline: immediate wake" $?
+[ ! -f "$QA/alarm.pid" ]; check "alarm: liveness marker removed on exit (trap)" $?
 
 touch "$QA/cancel"
 OUT=$(QUOTA_PILOT_DIR="$QA" QUOTA_PILOT_ALARM_TICK=1 "$ROOT/scripts/quota_alarm.sh" $((NOW+120)))
@@ -180,6 +181,63 @@ import json,sys;d=json.load(sys.stdin)
 assert d['suggested_defer_seconds']==0 and d['warn_threshold']==88.0" 2>/dev/null
 check "--json below threshold: defer is 0" $?
 
+echo "== quota_recover.sh (SessionStart recovery) =="
+QPE="$TMP/qp-empty"; mkdir -p "$QPE"   # empty state dir → no live alarm marker
+rec() { QUOTA_PILOT_DIR="$QPE" QUOTA_PILOT_CWD="$1" "$ROOT/hooks/quota_recover.sh"; }
+QR="$TMP/proj"; mkdir -p "$QR/.claude"
+cat > "$QR/.claude/quota-checkpoint.md" <<'EOF'
+# Quota Checkpoint — 2026-07-13T02:26:33Z
+## Task goal
+Test goal.
+## Next step
+Run the migration on table foo.
+EOF
+OUT=$(rec "$QR" < /dev/null)
+echo "$OUT" | python3 -c "
+import json,sys;d=json.load(sys.stdin)
+ctx=d['hookSpecificOutput']['additionalContext']
+assert d['hookSpecificOutput']['hookEventName']=='SessionStart'
+assert '.claude/quota-checkpoint.md' in ctx
+assert 'Run the migration on table foo' in ctx
+assert 'rm ' in ctx and 'silence' in ctx, 'escape hatch missing'" 2>/dev/null
+check "recover: orphan checkpoint surfaced with Next step + escape hatch" $?
+
+# project-root fallback — incident 2026-07-13: the model wrote the checkpoint to
+# the project root, not .claude/; recovery must still find it
+QR2="$TMP/proj2"; mkdir -p "$QR2"
+printf '# Quota Checkpoint — 2026-07-13T10:00:00Z\n## Next step\nroot fallback\n' > "$QR2/quota-checkpoint.md"
+OUT=$(rec "$QR2" < /dev/null)
+echo "$OUT" | grep -q "quota-checkpoint.md"; check "recover: project-root checkpoint fallback detected" $?
+
+# no checkpoint → dead silent (must never disturb a normal session)
+OUT=$(rec "$TMP/proj-none" < /dev/null)
+[ -z "$OUT" ]; check "recover: no checkpoint → silent" $?
+
+# cwd taken from the SessionStart stdin payload when env override is absent
+OUT=$(printf '{"cwd":"%s","source":"startup"}' "$QR" | QUOTA_PILOT_DIR="$QPE" "$ROOT/hooks/quota_recover.sh")
+echo "$OUT" | grep -q "quota-checkpoint.md"; check "recover: reads cwd from stdin payload" $?
+
+# source=resume → silent (in-place resume is owned by the wake-up path)
+OUT=$(printf '{"cwd":"%s","source":"resume"}' "$QR" | QUOTA_PILOT_DIR="$QPE" "$ROOT/hooks/quota_recover.sh")
+[ -z "$OUT" ]; check "recover: source=resume → silent" $?
+
+# live alarm (PID alive, reset in the future) → live park, stay silent
+QPL="$TMP/qp-live"; mkdir -p "$QPL"
+printf '{"pid":%s,"resets_at":%s}\n' "$$" "$((NOW+3600))" > "$QPL/alarm.pid"
+OUT=$(QUOTA_PILOT_DIR="$QPL" QUOTA_PILOT_CWD="$QR" "$ROOT/hooks/quota_recover.sh" < /dev/null)
+[ -z "$OUT" ]; check "recover: live alarm marker → silent (not an orphan)" $?
+
+# dead alarm (PID cannot exist) → true orphan, surface
+QPD="$TMP/qp-dead"; mkdir -p "$QPD"
+printf '{"pid":2147483646,"resets_at":%s}\n' "$((NOW+3600))" > "$QPD/alarm.pid"
+OUT=$(QUOTA_PILOT_DIR="$QPD" QUOTA_PILOT_CWD="$QR" "$ROOT/hooks/quota_recover.sh" < /dev/null)
+echo "$OUT" | grep -q "quota-checkpoint.md"; check "recover: dead alarm marker → orphan surfaced" $?
+
+# stale live PID but reset long past → treated as orphan (guards PID reuse)
+printf '{"pid":%s,"resets_at":%s}\n' "$$" "$((NOW-100000))" > "$QPL/alarm.pid"
+OUT=$(QUOTA_PILOT_DIR="$QPL" QUOTA_PILOT_CWD="$QR" "$ROOT/hooks/quota_recover.sh" < /dev/null)
+echo "$OUT" | grep -q "quota-checkpoint.md"; check "recover: live PID but reset long past → orphan surfaced" $?
+
 echo "== install.sh roundtrip =="
 CD="$TMP/claude"; mkdir -p "$CD"
 echo '{"statusLine":{"type":"command","command":"my-old-statusline.sh"},"model":"opus"}' > "$CD/settings.json"
@@ -193,11 +251,14 @@ python3 -c "
 import json;s=json.load(open('$CD/settings.json'))
 hooks=[h['command'] for e in s['hooks']['PostToolUse'] for h in e['hooks']]
 assert any('quota_gate.sh' in c for c in hooks)
+ss=[h['command'] for e in s['hooks'].get('SessionStart',[]) for h in e['hooks']]
+assert any('quota_recover.sh' in c for c in ss), 'SessionStart recover hook missing'
 assert s['statusLine']['command'].endswith('statusline.sh')
 assert s['model']=='opus'
 cfg=json.load(open('$CD/quota-pilot/config.json'))
 assert cfg['statusline_passthrough']=='my-old-statusline.sh'" 2>/dev/null
-check "settings: hook registered, statusline wrapped, original preserved, unrelated keys intact" $?
+check "settings: gate+recover hooks registered, statusline wrapped, original preserved, unrelated keys intact" $?
+[ -x "$CD/quota-pilot/bin/quota_recover.sh" ]; check "recover hook installed to bin/" $?
 
 "$ROOT/install.sh" --target="$CD" > /dev/null 2>&1
 python3 -c "
@@ -210,9 +271,10 @@ check "reinstall idempotent: no duplicate hook entry" $?
 python3 -c "
 import json;s=json.load(open('$CD/settings.json'))
 assert 'PostToolUse' not in s.get('hooks',{})
+assert 'SessionStart' not in s.get('hooks',{})
 assert s['statusLine']['command']=='my-old-statusline.sh'
 assert s['model']=='opus'" 2>/dev/null
-check "uninstall: hook removed, original statusline restored" $?
+check "uninstall: gate+recover hooks removed, original statusline restored" $?
 [ ! -f "$CD/commands/quota.md" ] && [ ! -d "$CD/skills/quota-pilot" ]
 check "uninstall: files removed" $?
 

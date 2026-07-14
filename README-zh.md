@@ -100,6 +100,21 @@ tests/run_tests.sh    # 31 个单元测试：采样、决策、burn-rate、statu
 
 ## 更新日志
 
+### v0.3.0 (2026-07-14)
+
+进程死亡恢复——唤醒闹钟活在会话进程内，关终端/重启/放弃 park 会让 checkpoint 孤零零躺着、无人自动唤醒（2026-07-13 实战：会话 park 后进程在 idle 中死掉，checkpoint 直到 13.5 小时后才被人工发现）。
+
+| 项目 | 变更 |
+|------|------|
+| SessionStart 恢复 hook | 新增 `quota_recover.sh`，新会话冷启动时顶出遗留的 `quota-checkpoint.md`，孤儿 park 不再被静默丢失 |
+| 活 park vs 孤儿 | `quota_alarm.sh` 等待期写 `alarm.pid`；PID 存活时（及 `resume`）hook 静默，只对真孤儿出声——有效 park 期间和 subagent 里都不误报 |
+| 逃生出口 | 恢复提示告知不想续跑就 `rm` checkpoint，不会永久 nag |
+| 安装器 | 幂等注册/注销 SessionStart hook；`install.sh` 输出 `Done! N file(s)` / `Dry run: N file(s)` 作干净重装信号 |
+
+经 skill-review 委员会审查（5 条确认、修 3；2 条驳回）。行为覆盖见 `tests/run_tests.sh`（43 用例）。已知 follow-up（见 DESIGN §10）：model-scoped 限额盲区（Fable 类逐模型限额）+ 并行 subagent 燃烧盲区。
+
+完整英文发布说明见 [README.md](README.md)。
+
 ### v0.2.2 (2026-07-14)
 
 v0.2.1 燃烧率升级的后续修复——消除结算尖峰误报。2026-07-13 事故：采样值 66 秒内 36%→59% 跳变（结算伪影），在 65%、窗口尚剩 4.5h 时误暂停会话。

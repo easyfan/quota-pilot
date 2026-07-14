@@ -121,6 +121,19 @@ tests/run_tests.sh    # 31 unit tests: sampling, gating, burn-rate, statusline, 
 
 ## Changelog
 
+### v0.3.0 (2026-07-14)
+
+Process-death recovery — the wake-up alarm lives inside the session process, so a closed terminal / rebooted machine / abandoned park leaves the checkpoint stranded with nothing to auto-wake it (field incident 2026-07-13: a session parked, its process died during the idle wait, and the checkpoint surfaced only 13.5h later by hand).
+
+| Item | Change |
+|------|--------|
+| SessionStart recovery hook | new `quota_recover.sh` surfaces a leftover `quota-checkpoint.md` on the next cold start so an orphaned park is never silently lost |
+| Live-park vs orphan | `quota_alarm.sh` writes `alarm.pid` while waiting; the hook stays silent while that PID is alive (and on in-place `resume`), speaking up only for a genuine orphan — no false prompts during a valid park or in subagents |
+| Escape hatch | the recovery notice tells you to `rm` the checkpoint if you do not intend to resume, so it never nags forever |
+| Installer | registers/deregisters the SessionStart hook idempotently; `install.sh` now reports `Done! N file(s)` / `Dry run: N file(s)` for a clean re-install signal |
+
+Reviewed by the skill-review committee (5 findings confirmed, 3 fixed; 2 disputed findings correctly rejected). Behavioral coverage in `tests/run_tests.sh` (43 cases). Known follow-ups (see DESIGN §10): model-scoped limit blindness (Fable-style per-model caps) and the parallel-subagent burn blind spot.
+
 ### v0.2.2 (2026-07-14)
 
 Follow-up to v0.2.1's burn-rate escalation — suppress settlement-spike false positives. Incident 2026-07-13: a 36%→59% sampler jump in 66s (a usage-settlement artifact, not real burn) projected 20.9%/min and paused a session at 65% with 4.5h of window left.

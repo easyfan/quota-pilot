@@ -90,6 +90,21 @@ tests/run_tests.sh    # 31 Unit-Tests: Sampling, Gating, Burn-Rate, Statusline, 
 
 ## Changelog
 
+### v0.3.0 (2026-07-14)
+
+Wiederherstellung nach Prozesstod — der Aufweck-Alarm lebt im Sitzungsprozess; ein geschlossenes Terminal / Neustart / aufgegebener Park lässt den Checkpoint zurück, ohne dass etwas automatisch aufweckt (Vorfall 2026-07-13: Prozess starb während der Wartezeit, Checkpoint erst 13,5 h später von Hand gefunden).
+
+| Punkt | Änderung |
+|-------|----------|
+| SessionStart-Recovery-Hook | neues `quota_recover.sh` bringt einen liegengebliebenen `quota-checkpoint.md` beim nächsten Kaltstart zum Vorschein |
+| Lebender Park vs. Waise | `quota_alarm.sh` schreibt `alarm.pid` während des Wartens; der Hook schweigt solange die PID lebt (und bei `resume`), meldet sich nur bei echter Waise |
+| Notausgang | der Hinweis nennt `rm` des Checkpoints, falls keine Wiederaufnahme gewünscht ist |
+| Installer | registriert/entfernt den SessionStart-Hook idempotent; `install.sh` meldet nun `Done! N file(s)` / `Dry run: N file(s)` |
+
+Vom skill-review-Komitee geprüft (5 bestätigt, 3 behoben; 2 zurückgewiesen). Verhaltensabdeckung in `tests/run_tests.sh` (43 Fälle).
+
+See [README.md](README.md) for full English release notes.
+
 ### v0.2.2 (2026-07-14)
 
 Folgemaßnahme zur Burn-Rate-Eskalation aus v0.2.1 — Fehlalarme durch Abrechnungs-Spitzen unterdrücken. Vorfall 2026-07-13: ein Sampler-Sprung 36%→59% in 66s pausierte eine Sitzung bei 65%, obwohl noch 4,5h Fenster übrig waren.

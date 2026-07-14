@@ -90,6 +90,21 @@ tests/run_tests.sh    # 31 tests unitaires : échantillonnage, gating, burn-rate
 
 ## Journal des modifications
 
+### v0.3.0 (2026-07-14)
+
+Récupération après mort du processus — l'alarme de réveil vit dans le processus de session ; un terminal fermé / redémarrage / park abandonné laisse le checkpoint orphelin sans rien pour réveiller automatiquement (incident 2026-07-13 : le processus est mort pendant l'attente, checkpoint retrouvé à la main 13,5 h plus tard).
+
+| Élément | Changement |
+|---------|-----------|
+| Hook SessionStart de récupération | nouveau `quota_recover.sh` fait remonter un `quota-checkpoint.md` résiduel au prochain démarrage à froid |
+| Park vivant vs orphelin | `quota_alarm.sh` écrit `alarm.pid` pendant l'attente ; le hook se tait tant que ce PID est vivant (et sur `resume`), ne parle que pour un vrai orphelin |
+| Sortie de secours | l'avis indique de `rm` le checkpoint si vous ne comptez pas reprendre |
+| Installateur | enregistre/retire le hook SessionStart de façon idempotente ; `install.sh` affiche `Done! N file(s)` / `Dry run: N file(s)` |
+
+Revu par le comité skill-review (5 confirmés, 3 corrigés ; 2 rejetés). Couverture comportementale dans `tests/run_tests.sh` (43 cas).
+
+Voir [README.md](README.md) pour les notes de version complètes en anglais.
+
 ### v0.2.2 (2026-07-14)
 
 Suite de l'escalade par taux de consommation de v0.2.1 — supprimer les faux positifs dus aux pics de règlement. Incident 2026-07-13 : un saut d'échantillon 36%→59% en 66s a mis une session en pause à 65% alors qu'il restait 4,5h de fenêtre.

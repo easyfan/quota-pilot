@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "quota-pilot",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "description": "Proactive rate-limit pilot: samples subscription quota (oauth/usage polling + statusline capture), injects an assessment alert before the 5-hour window is exhausted, checkpoints gracefully, sets a wall-clock alarm, and auto-resumes after reset. Includes /quota status command.",
       "category": "workflow",
       "source": {
