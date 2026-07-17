@@ -50,6 +50,12 @@ BIN_FILES=(
 edit_settings() {  # $1 = install | uninstall
   local mode="$1"
   $DRY_RUN && { echo "[dry-run] would $mode hook/statusline entries in $SETTINGS"; return; }
+  # Nothing to deregister (and no parent dir to write into) on a machine that
+  # never had a settings.json — uninstall must stay a clean no-op there.
+  if [ "$mode" = uninstall ] && [ ! -f "$SETTINGS" ]; then
+    echo "  No $SETTINGS — nothing to deregister"
+    return 0
+  fi
   [ -f "$SETTINGS" ] && cp "$SETTINGS" "$SETTINGS.bak-quota-pilot"
   MODE="$mode" SETTINGS="$SETTINGS" HOOK_CMD="$HOOK_CMD" RECOVER_CMD="$RECOVER_CMD" \
   SL_CMD="$SL_CMD" CONFIG="$CONFIG" STATUSLINE="$STATUSLINE" python3 <<'PY'
